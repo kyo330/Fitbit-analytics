@@ -1,11 +1,11 @@
-# 💪 Longitudinal Health & Behavior Intelligence Platform
+# Longitudinal Health & Behavior Intelligence Platform
 ### Dataset: FitBit Fitness Tracker Data (Kaggle · arashnic/fitbit)
 
-A production-grade Streamlit dashboard for longitudinal behavioral analysis of real wearable data from 30 FitBit users across 31 days (March–April 2016).
+A production grade Streamlit dashboard for longitudinal behavioral analysis of real wearable data from 30 FitBit users across 31 days (March–April 2016).
 
 ---
 
-## 🚀 Quick Start
+## Quick Start
 
 ```bash
 pip install -r requirements.txt
@@ -30,7 +30,7 @@ fitbit_platform/
 
 ---
 
-## 🗂️ Dataset — Kaggle FitBit Fitness Tracker Data
+## Dataset — Kaggle FitBit Fitness Tracker Data
 
 **Source**: [kaggle.com/datasets/arashnic/fitbit](https://www.kaggle.com/datasets/arashnic/fitbit)
 
@@ -51,7 +51,7 @@ fitbit_platform/
 
 ---
 
-## 🧩 Modules
+## Modules
 
 | # | Page | What it does |
 |---|------|-------------|
@@ -64,7 +64,7 @@ fitbit_platform/
 
 ---
 
-## 🤖 ML Pipeline
+## ML Pipeline
 
 ### Anomaly Detection
 - **Model**: `sklearn.ensemble.IsolationForest`
@@ -81,7 +81,7 @@ fitbit_platform/
 
 ---
 
-## 🎛️ Sidebar Controls
+## Sidebar Controls
 
 | Control | What it does |
 |---------|-------------|
@@ -92,7 +92,7 @@ fitbit_platform/
 
 ---
 
-## 📊 Key Findings (from real data)
+## Key Findings (from real data)
 
 - Average daily steps: ~8,500 (below 10K WHO recommendation)
 - Average sedentary time: ~15.7 hours/day (high)
@@ -102,7 +102,7 @@ fitbit_platform/
 
 ---
 
-## 🖥️ Tech Stack
+## Tech Stack
 
 | Tool | Purpose |
 |------|---------|
