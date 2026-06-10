@@ -168,7 +168,15 @@ CHART_DEFAULTS = dict(
 @st.cache_data
 def load_data():
     
-    df = pd.read_csv(Customers.csv)
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    search_paths = [
+        os.path.join(base_dir, "Customers.csv")
+    ]
+    csv_path = next((p for p in search_paths if os.path.exists(p)), None)
+    if csv_path is None:
+        return None
+ 
+    df = pd.read_csv(csv_path)
 
     # Normalize column names to a consistent set
     column_map = {}
