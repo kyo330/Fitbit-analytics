@@ -1,722 +1,799 @@
-"""
-Longitudinal Health & Behavior Intelligence Platform
-Dataset: FitBit Fitness Tracker Data (Kaggle — arashnic/fitbit)
-30 users · 31 days · March–April 2016
-Columns: dailyActivity_merged.csv + sleepDay_merged.csv
-"""
+import os
+import warnings
 
-import streamlit as st
-import pandas as pd
 import numpy as np
-import plotly.graph_objects as go
+import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
+import streamlit as st
 from plotly.subplots import make_subplots
-from sklearn.ensemble import IsolationForest, RandomForestRegressor
-from sklearn.preprocessing import StandardScaler
-from sklearn.metrics import mean_absolute_error, r2_score
 from scipy import stats
-import warnings, os
+from sklearn.cluster import KMeans
+from sklearn.preprocessing import StandardScaler
 
 warnings.filterwarnings("ignore")
 
-# ── Page config ───────────────────────────────────────────────────────────────
+
+# Page config
 st.set_page_config(
-    page_title="FitBit Intelligence Platform",
-    page_icon="💪",
+    page_title="Customer Intelligence",
+    page_icon="🛍️",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
-# ── CSS ───────────────────────────────────────────────────────────────────────
+
+# Styles
+# Text is consistently light so it reads on the dark background.
+# Key rules: labels >= #c2cadb, body text >= #e4eafa, headings #f1f5fb.
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
-html,body,[class*="css"]{font-family:'Inter',sans-serif;}
 
-.metric-card{background:linear-gradient(135deg,#1e2130,#252a3d);border:1px solid #2d3250;
-  border-radius:12px;padding:20px 22px;text-align:center;box-shadow:0 4px 20px rgba(0,0,0,.3);}
-.metric-card .val{font-size:1.9rem;font-weight:700;color:#7c9ef5;line-height:1.1;}
-.metric-card .lbl{font-size:.75rem;color:#8b92a8;margin-top:4px;text-transform:uppercase;letter-spacing:.05em;}
-.metric-card .dlt{font-size:.8rem;margin-top:5px;}
+html, body, [class*="css"] {
+    font-family: 'Inter', sans-serif;
+}
 
-.section-hdr{font-size:1.35rem;font-weight:700;color:#e2e8f0;border-left:4px solid #7c9ef5;
-  padding-left:13px;margin:26px 0 16px;}
+.page-title {
+    font-size: 1.9rem;
+    font-weight: 800;
+    background: linear-gradient(135deg, #7c9ef5, #a78bfa, #60d9fa);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin-bottom: 4px;
+}
 
-.insight-card{background:linear-gradient(135deg,#1a1f35,#1e2540);border:1px solid #2d3a6a;
-  border-radius:10px;padding:13px 17px;margin-bottom:9px;font-size:.88rem;color:#c8d4f0;line-height:1.55;}
-.insight-card.warn{border-left:3px solid #f6a623;background:linear-gradient(135deg,#1f1a0e,#2a2010);}
-.insight-card.good{border-left:3px solid #48bb78;background:linear-gradient(135deg,#0e1f17,#102318);}
-.insight-card.bad{border-left:3px solid #fc8181;background:linear-gradient(135deg,#1f0e0e,#231010);}
+.page-subtitle {
+    color: #aeb6cc;
+    font-size: 0.88rem;
+    margin-bottom: 24px;
+}
 
-.platform-title{font-size:1.95rem;font-weight:800;
-  background:linear-gradient(135deg,#7c9ef5,#a78bfa,#60d9fa);
-  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;margin-bottom:3px;}
-.platform-sub{color:#4a5568;font-size:.85rem;margin-bottom:22px;}
+.section-heading {
+    font-size: 1.2rem;
+    font-weight: 700;
+    color: #f1f5fb;
+    border-left: 4px solid #7c9ef5;
+    padding-left: 12px;
+    margin: 28px 0 16px;
+}
 
-.pred-box{background:linear-gradient(135deg,#1a2040,#1e2850);border:1px solid #3a4a7a;
-  border-radius:12px;padding:20px 26px;text-align:center;}
-.pred-box .pval{font-size:2.3rem;font-weight:800;color:#a78bfa;}
-.pred-box .plbl{color:#8b92a8;font-size:.78rem;text-transform:uppercase;letter-spacing:.06em;}
+.kpi-card {
+    background: linear-gradient(135deg, #1e2130, #252a3d);
+    border: 1px solid #353b58;
+    border-radius: 12px;
+    padding: 20px;
+    text-align: center;
+}
 
-.badge{display:inline-block;background:#7f1d1d;color:#fca5a5;padding:2px 9px;
-  border-radius:20px;font-size:.72rem;font-weight:600;margin-left:7px;}
+.kpi-value {
+    font-size: 1.8rem;
+    font-weight: 700;
+    line-height: 1.1;
+}
 
-div[data-testid="stMetricValue"]{color:#7c9ef5;font-weight:700;}
-.stSidebar{background:#151821!important;}
-h1,h2,h3{color:#e2e8f0!important;}
+.kpi-label {
+    font-size: 0.76rem;
+    font-weight: 600;
+    color: #c2cadb;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-top: 6px;
+}
+
+.kpi-sub {
+    font-size: 0.8rem;
+    color: #aeb6cc;
+    margin-top: 4px;
+}
+
+.insight-card {
+    border-radius: 10px;
+    padding: 14px 18px;
+    margin-bottom: 10px;
+    font-size: 0.92rem;
+    color: #e4eafa;
+    line-height: 1.65;
+}
+
+.insight-card b {
+    color: #ffffff;
+}
+
+.insight-good {
+    background: linear-gradient(135deg, #112418, #13291d);
+    border-left: 4px solid #48bb78;
+}
+
+.insight-warn {
+    background: linear-gradient(135deg, #241d10, #2c2413);
+    border-left: 4px solid #f6a623;
+}
+
+.insight-neutral {
+    background: linear-gradient(135deg, #1c2238, #222a48);
+    border-left: 4px solid #7c9ef5;
+}
+
+.persona-card {
+    background: linear-gradient(135deg, #1a2040, #1e2850);
+    border: 1px solid #3a4a7a;
+    border-radius: 12px;
+    padding: 18px 20px;
+    margin-bottom: 12px;
+}
+
+.persona-name {
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: #ffffff;
+    margin-bottom: 6px;
+}
+
+.persona-detail {
+    color: #c2cadb;
+    font-size: 0.85rem;
+    line-height: 1.7;
+}
+
+h1, h2, h3 { color: #f1f5fb !important; }
+.stSidebar { background: #141823 !important; }
+section[data-testid="stSidebar"] * { color: #dce3f2 !important; }
+div[data-testid="stMetricValue"] { color: #7c9ef5; font-weight: 700; }
 </style>
 """, unsafe_allow_html=True)
 
-# ── Constants ─────────────────────────────────────────────────────────────────
-BASE = os.path.dirname(__file__)
-DATA = os.path.join(BASE, "data")
 
-COLORS = dict(
-    TotalSteps="#60d9fa", Calories="#f687b3", SedentaryMinutes="#fc8181",
-    VeryActiveMinutes="#48bb78", TotalMinutesAsleep="#a78bfa",
-    TotalDistance="#f6a623", sleep_efficiency="#7c9ef5",
-    anomaly="#ff4444", r7="#ffffff", r14="#ffd700",
-)
-LABELS = dict(
-    TotalSteps="Total Steps", Calories="Calories Burned",
-    SedentaryMinutes="Sedentary Minutes", VeryActiveMinutes="Very Active Minutes",
-    TotalDistance="Distance (miles)", TotalMinutesAsleep="Sleep (minutes)",
-    FairlyActiveMinutes="Fairly Active Minutes", LightlyActiveMinutes="Lightly Active Minutes",
-    sleep_efficiency="Sleep Efficiency (%)",
-)
-PLOT = dict(
-    plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
-    font_color="#a0aec0", font_family="Inter", title_font_color="#e2e8f0",
-    legend=dict(bgcolor="rgba(0,0,0,0)", font_color="#a0aec0"),
-    xaxis=dict(gridcolor="#1e2436", showgrid=True, zeroline=False),
-    yaxis=dict(gridcolor="#1e2436", showgrid=True, zeroline=False),
-    margin=dict(l=10, r=10, t=42, b=10), height=360,
+# Color palette used across all charts
+PALETTE = ["#60d9fa", "#a78bfa", "#48bb78", "#f6a623", "#fc8181", "#f687b3", "#7c9ef5"]
+
+# Shared Plotly layout settings applied to every chart
+CHART_DEFAULTS = dict(
+    plot_bgcolor="rgba(0,0,0,0)",
+    paper_bgcolor="rgba(0,0,0,0)",
+    font_color="#cbd5e8",
+    font_family="Inter",
+    title_font_color="#f1f5fb",
+    legend=dict(bgcolor="rgba(0,0,0,0)", font_color="#cbd5e8"),
+    xaxis=dict(gridcolor="#272d42", showgrid=True, zeroline=False, color="#cbd5e8"),
+    yaxis=dict(gridcolor="#272d42", showgrid=True, zeroline=False, color="#cbd5e8"),
+    margin=dict(l=10, r=10, t=48, b=10),
+    height=360,
 )
 
-# ── Data loading & merging ────────────────────────────────────────────────────
+
+# Data loading
+
 @st.cache_data
 def load_data():
-    act = pd.read_csv(os.path.join(DATA, "dailyActivity_merged.csv"))
-    slp = pd.read_csv(os.path.join(DATA, "sleepDay_merged.csv"))
+    """
+    Look for Customers.csv in common locations and return a cleaned dataframe.
+    Column names vary across Kaggle versions so we normalize them here.
+    """
+    search_paths = [
+        "Customers.csv",
+        "customers.csv",
+        os.path.join("data", "Customers.csv"),
+        os.path.join("data", "customers.csv"),
+    ]
+    csv_path = next((p for p in search_paths if os.path.exists(p)), None)
+    if csv_path is None:
+        return None
 
-    act["date"] = pd.to_datetime(act["ActivityDate"], format="%m/%d/%Y")
-    slp["date"] = pd.to_datetime(slp["SleepDay"].str.split(" ").str[0], format="%m/%d/%Y")
+    df = pd.read_csv(csv_path)
 
-    merged = act.merge(slp[["Id", "date", "TotalMinutesAsleep", "TotalTimeInBed",
-                             "TotalSleepRecords"]], on=["Id", "date"], how="left")
+    # Normalize column names to a consistent set
+    column_map = {}
+    for col in df.columns:
+        lower = col.strip().lower()
+        if lower in ("customerid", "id", "customer id"):
+            column_map[col] = "CustomerID"
+        elif lower in ("gender", "genre", "sex"):
+            column_map[col] = "Gender"
+        elif lower == "age":
+            column_map[col] = "Age"
+        elif "income" in lower:
+            column_map[col] = "AnnualIncome"
+        elif "spending" in lower:
+            column_map[col] = "SpendingScore"
+        elif "profession" in lower or "occupation" in lower:
+            column_map[col] = "Profession"
+        elif "work" in lower and "exp" in lower:
+            column_map[col] = "WorkExperience"
+        elif "family" in lower:
+            column_map[col] = "FamilySize"
 
-    merged["sleep_hours"]     = (merged["TotalMinutesAsleep"] / 60).round(2)
-    merged["time_in_bed_hrs"] = (merged["TotalTimeInBed"] / 60).round(2)
-    merged["sleep_efficiency"]= (merged["TotalMinutesAsleep"] /
-                                  merged["TotalTimeInBed"].replace(0, np.nan) * 100).round(1)
-    merged["active_minutes"]  = (merged["VeryActiveMinutes"] + merged["FairlyActiveMinutes"]
-                                  + merged["LightlyActiveMinutes"])
-    merged["day_of_week"]     = merged["date"].dt.day_name()
-    merged["week_num"]        = merged["date"].dt.isocalendar().week.astype(int)
-    merged["user_label"]      = "User " + merged["Id"].astype(str).str[-4:]
+    df = df.rename(columns=column_map)
 
-    return merged.sort_values(["Id", "date"]).reset_index(drop=True)
+    # Basic cleaning
+    if "Age" in df.columns:
+        df = df[df["Age"] > 0]
+    if "AnnualIncome" in df.columns:
+        df = df[df["AnnualIncome"] >= 0]
+    if "Profession" in df.columns:
+        df["Profession"] = df["Profession"].fillna("Unknown").replace("", "Unknown")
+    if "Gender" in df.columns:
+        df["Gender"] = df["Gender"].str.strip().str.title()
 
+    return df.reset_index(drop=True)
+
+
+# Segmentation
 
 @st.cache_data
-def add_rolling(df):
-    df = df.copy()
-    cols = ["TotalSteps", "Calories", "SedentaryMinutes", "VeryActiveMinutes",
-            "TotalMinutesAsleep", "sleep_efficiency", "active_minutes"]
-    for uid, grp in df.groupby("Id"):
-        idx = grp.index
-        for c in cols:
-            if c in df.columns:
-                df.loc[idx, f"{c}_r7"]  = grp[c].rolling(7,  min_periods=1).mean().round(1).values
-                df.loc[idx, f"{c}_r14"] = grp[c].rolling(14, min_periods=1).mean().round(1).values
-                df.loc[idx, f"{c}_z"]   = stats.zscore(grp[c].fillna(grp[c].median())).round(3)
-    return df
+def segment_customers(df, k=5):
+    """
+    KMeans clustering on annual income, spending score, and age.
+    Each cluster gets a readable persona name based on its income and spending profile.
+    Returns the dataframe with Segment and SegmentName columns added.
+    """
+    feature_cols = [c for c in ["AnnualIncome", "SpendingScore", "Age"] if c in df.columns]
+    clean = df.dropna(subset=feature_cols).copy()
+
+    scaled = StandardScaler().fit_transform(clean[feature_cols])
+    km = KMeans(n_clusters=k, random_state=42, n_init=10)
+    clean["Segment"] = km.fit_predict(scaled)
+
+    income_mid = clean["AnnualIncome"].median()
+    spending_mid = clean["SpendingScore"].median()
+
+    def label_segment(group_df):
+        high_income = group_df["AnnualIncome"].mean() >= income_mid
+        high_spending = group_df["SpendingScore"].mean() >= spending_mid
+        if high_income and high_spending:
+            return "Premium Loyalists"
+        elif high_income and not high_spending:
+            return "Untapped High-Earners"
+        elif not high_income and high_spending:
+            return "Aspirational Spenders"
+        else:
+            return "Budget Conscious"
+
+    raw_labels = {seg: label_segment(grp) for seg, grp in clean.groupby("Segment")}
+
+    # If two segments get the same name, distinguish by age
+    seen = {}
+    final_labels = {}
+    for seg in sorted(clean["Segment"].unique()):
+        name = raw_labels[seg]
+        if name in seen:
+            avg_age = clean.loc[clean["Segment"] == seg, "Age"].mean()
+            suffix = "Younger" if avg_age < clean["Age"].median() else "Older"
+            final_labels[seg] = f"{name} ({suffix})"
+        else:
+            seen[name] = True
+            final_labels[seg] = name
+
+    clean["SegmentName"] = clean["Segment"].map(final_labels)
+    return clean, final_labels
 
 
-@st.cache_data
-def detect_anomalies(df):
-    df = df.copy()
-    features = ["TotalSteps", "Calories", "SedentaryMinutes", "VeryActiveMinutes"]
-    for uid, grp in df.groupby("Id"):
-        idx = grp.index
-        X = grp[features].fillna(grp[features].median())
-        sc = StandardScaler()
-        Xs = sc.fit_transform(X)
-        iso = IsolationForest(contamination=0.07, random_state=42, n_estimators=100)
-        df.loc[idx, "anomaly"]       = iso.fit_predict(Xs)
-        df.loc[idx, "anomaly_score"] = -iso.decision_function(Xs)
-    return df
+# Shared UI components
+
+def kpi_card(value, label, sub="", color="#7c9ef5"):
+    st.markdown(f"""
+    <div class="kpi-card">
+        <div class="kpi-value" style="color:{color}">{value}</div>
+        <div class="kpi-label">{label}</div>
+        <div class="kpi-sub">{sub}</div>
+    </div>
+    """, unsafe_allow_html=True)
 
 
-@st.cache_data
-def train_model(df, target="Calories"):
-    feat = ["TotalSteps", "VeryActiveMinutes", "FairlyActiveMinutes",
-            "LightlyActiveMinutes", "SedentaryMinutes", "TotalDistance",
-            "TotalMinutesAsleep"]
-    feat = [f for f in feat if f in df.columns]
-    d2 = df.dropna(subset=feat + [target]).copy()
-    X, y = d2[feat], d2[target]
-    split = int(len(X) * 0.8)
-    mdl = RandomForestRegressor(n_estimators=150, max_depth=6, random_state=42)
-    mdl.fit(X[:split], y[:split])
-    preds = mdl.predict(X[split:])
-    return dict(
-        model=mdl, mae=round(mean_absolute_error(y[split:], preds), 1),
-        r2=round(r2_score(y[split:], preds), 3),
-        y_test=y[split:].values, y_pred=preds,
-        dates=d2["date"].iloc[split:].values,
-        importances=pd.Series(mdl.feature_importances_, index=feat).sort_values(ascending=False),
-        feat=feat, target=target,
-        next_pred=round(mdl.predict(X.iloc[[-1]])[0], 1),
+def section(title):
+    st.markdown(f'<div class="section-heading">{title}</div>', unsafe_allow_html=True)
+
+
+def apply_chart_style(fig, title="", height=360):
+    settings = {**CHART_DEFAULTS, "height": height}
+    if title:
+        settings["title"] = title
+    fig.update_layout(**settings)
+    return fig
+
+
+# Overview page
+
+def show_overview(df):
+    st.markdown('<div class="page-title">Customer Intelligence Platform</div>', unsafe_allow_html=True)
+    st.markdown(
+        '<div class="page-subtitle">Kaggle: datascientistanna/customers-dataset &nbsp;|&nbsp; '
+        f'{len(df):,} customers &nbsp;|&nbsp; demographics, income, and spending behavior</div>',
+        unsafe_allow_html=True,
     )
 
+    cols = st.columns(4)
+    with cols[0]:
+        kpi_card(f"{len(df):,}", "Total Customers", "in dataset", "#60d9fa")
+    with cols[1]:
+        kpi_card(
+            f"${df['AnnualIncome'].mean():,.0f}",
+            "Avg Annual Income",
+            f"median ${df['AnnualIncome'].median():,.0f}",
+            "#48bb78",
+        )
+    with cols[2]:
+        kpi_card(
+            f"{df['SpendingScore'].mean():.0f} / 100",
+            "Avg Spending Score",
+            f"std {df['SpendingScore'].std():.0f}",
+            "#a78bfa",
+        )
+    with cols[3]:
+        kpi_card(
+            f"{df['Age'].mean():.0f} yrs",
+            "Avg Age",
+            f"range {int(df['Age'].min())} to {int(df['Age'].max())}",
+            "#f6a623",
+        )
 
-# ── Sidebar ───────────────────────────────────────────────────────────────────
-def sidebar(df):
-    st.sidebar.markdown("## 💪 FitBit Intelligence")
+    st.markdown("")
+
+    row2 = st.columns(4)
+    if "Gender" in df.columns:
+        female_pct = (df["Gender"] == "Female").mean() * 100
+        with row2[0]:
+            kpi_card(f"{female_pct:.0f}% F / {100 - female_pct:.0f}% M", "Gender Split", "", "#f687b3")
+    if "Profession" in df.columns:
+        with row2[1]:
+            kpi_card(f"{df['Profession'].nunique()}", "Professions", "distinct categories", "#7c9ef5")
+    if "FamilySize" in df.columns:
+        with row2[2]:
+            kpi_card(f"{df['FamilySize'].mean():.1f}", "Avg Family Size", "members per household", "#60d9fa")
+    if "WorkExperience" in df.columns:
+        with row2[3]:
+            kpi_card(f"{df['WorkExperience'].mean():.1f} yrs", "Avg Work Experience", "", "#48bb78")
+
+    section("Data Preview")
+    preview_cols = [c for c in
+        ["CustomerID", "Gender", "Age", "AnnualIncome", "SpendingScore",
+         "Profession", "WorkExperience", "FamilySize"]
+        if c in df.columns]
+    st.dataframe(df[preview_cols].head(25), use_container_width=True, height=340)
+
+    section("Summary Statistics")
+    num_cols = [c for c in ["Age", "AnnualIncome", "SpendingScore", "WorkExperience", "FamilySize"]
+                if c in df.columns]
+    st.dataframe(df[num_cols].describe().round(1), use_container_width=True)
+
+
+# Demographics page
+
+def show_demographics(df):
+    section("Age and Income Distribution")
+
+    col1, col2 = st.columns(2)
+    with col1:
+        fig = px.histogram(df, x="Age", nbins=25, color_discrete_sequence=["#60d9fa"])
+        apply_chart_style(fig, "How old are our customers?", 320)
+        st.plotly_chart(fig, use_container_width=True)
+
+    with col2:
+        fig = px.histogram(df, x="AnnualIncome", nbins=25, color_discrete_sequence=["#48bb78"],
+                           labels={"AnnualIncome": "Annual Income ($)"})
+        apply_chart_style(fig, "How much do they earn?", 320)
+        st.plotly_chart(fig, use_container_width=True)
+
+    section("Gender and Profession Breakdown")
+
+    col3, col4 = st.columns(2)
+    if "Gender" in df.columns:
+        with col3:
+            counts = df["Gender"].value_counts()
+            fig = go.Figure(go.Pie(
+                labels=counts.index,
+                values=counts.values,
+                hole=0.45,
+                marker_colors=["#f687b3", "#60d9fa"],
+                textinfo="label+percent",
+                textfont_size=13,
+            ))
+            apply_chart_style(fig, "Gender Split", 320)
+            st.plotly_chart(fig, use_container_width=True)
+
+    if "Profession" in df.columns:
+        with col4:
+            top = df["Profession"].value_counts().head(10).sort_values()
+            fig = go.Figure(go.Bar(
+                x=top.values, y=top.index, orientation="h",
+                marker_color="#a78bfa",
+                text=top.values, textposition="outside",
+                textfont_color="#e4eafa",
+            ))
+            apply_chart_style(fig, "Top 10 Professions", 320)
+            st.plotly_chart(fig, use_container_width=True)
+
+    section("Who Spends the Most?")
+
+    col5, col6 = st.columns(2)
+
+    with col5:
+        df["AgeBand"] = pd.cut(
+            df["Age"], bins=[0, 25, 35, 45, 55, 100],
+            labels=["Under 25", "25 to 34", "35 to 44", "45 to 54", "55 plus"]
+        )
+        age_spend = df.groupby("AgeBand", observed=True)["SpendingScore"].mean().round(1)
+        fig = go.Figure(go.Bar(
+            x=age_spend.index.astype(str),
+            y=age_spend.values,
+            marker_color=PALETTE[:len(age_spend)],
+            text=age_spend.values, textposition="outside",
+            textfont_color="#e4eafa",
+        ))
+        apply_chart_style(fig, "Avg Spending Score by Age Group", 320)
+        st.plotly_chart(fig, use_container_width=True)
+
+    if "Gender" in df.columns:
+        with col6:
+            gender_spend = df.groupby("Gender")["SpendingScore"].mean().round(1)
+            fig = go.Figure(go.Bar(
+                x=gender_spend.index,
+                y=gender_spend.values,
+                marker_color=["#f687b3", "#60d9fa"],
+                text=gender_spend.values, textposition="outside",
+                textfont_color="#e4eafa",
+            ))
+            apply_chart_style(fig, "Avg Spending Score by Gender", 320)
+            st.plotly_chart(fig, use_container_width=True)
+
+    if "Profession" in df.columns:
+        section("Spending by Profession")
+        # Only include professions with enough customers to be meaningful
+        prof_size = df["Profession"].value_counts()
+        valid_profs = prof_size[prof_size >= 15].index
+        prof_spend = (df[df["Profession"].isin(valid_profs)]
+                      .groupby("Profession")["SpendingScore"]
+                      .mean()
+                      .round(1)
+                      .sort_values(ascending=True))
+
+        fig = go.Figure(go.Bar(
+            x=prof_spend.values,
+            y=prof_spend.index,
+            orientation="h",
+            marker_color="#7c9ef5",
+            text=prof_spend.values, textposition="outside",
+            textfont_color="#e4eafa",
+        ))
+        apply_chart_style(fig, "Avg Spending Score by Profession (min 15 customers)", 420)
+        st.plotly_chart(fig, use_container_width=True)
+
+
+# Segmentation page
+
+def show_segmentation(df):
+    section("KMeans Customer Segmentation")
+
+    k = st.slider("Number of segments", min_value=3, max_value=7, value=5,
+                  help="Adjust this to see how the clusters change.")
+
+    seg_df, label_map = segment_customers(df, k)
+
+    # Main scatter plot: income vs spending colored by segment
+    fig = px.scatter(
+        seg_df,
+        x="AnnualIncome", y="SpendingScore",
+        color="SegmentName",
+        size="Age",
+        color_discrete_sequence=PALETTE,
+        labels={
+            "AnnualIncome": "Annual Income ($)",
+            "SpendingScore": "Spending Score (1 to 100)",
+            "SegmentName": "Segment",
+        },
+        title="Customer Segments: Income vs Spending (bubble size reflects age)",
+        opacity=0.75,
+    )
+    apply_chart_style(fig, height=480)
+    st.plotly_chart(fig, use_container_width=True)
+
+    section("Segment Personas")
+
+    summary = (
+        seg_df.groupby("SegmentName")
+        .agg(
+            customers=("CustomerID", "count"),
+            avg_income=("AnnualIncome", "mean"),
+            avg_spending=("SpendingScore", "mean"),
+            avg_age=("Age", "mean"),
+        )
+        .round(0)
+        .sort_values("avg_spending", ascending=False)
+    )
+
+    total = len(seg_df)
+    persona_cols = st.columns(2)
+    for i, (name, row) in enumerate(summary.iterrows()):
+        share = row["customers"] / total * 100
+        with persona_cols[i % 2]:
+            st.markdown(f"""
+            <div class="persona-card">
+                <div class="persona-name">{name}</div>
+                <div class="persona-detail">
+                    {int(row['customers'])} customers ({share:.0f}% of base)<br>
+                    Avg income: ${row['avg_income']:,.0f}
+                    &nbsp; Avg spending: {row['avg_spending']:.0f} / 100
+                    &nbsp; Avg age: {row['avg_age']:.0f}
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+
+    section("Segment Comparison Table")
+
+    display = summary.copy()
+    display["avg_income"] = display["avg_income"].apply(lambda x: f"${x:,.0f}")
+    display["avg_spending"] = display["avg_spending"].apply(lambda x: f"{x:.0f} / 100")
+    display["avg_age"] = display["avg_age"].apply(lambda x: f"{x:.0f} yrs")
+    display.columns = ["Customers", "Avg Income", "Avg Spending Score", "Avg Age"]
+    st.dataframe(display, use_container_width=True)
+
+    section("Segment Distribution")
+    dist = seg_df["SegmentName"].value_counts()
+    fig = go.Figure(go.Bar(
+        x=dist.index, y=dist.values,
+        marker_color=PALETTE[:len(dist)],
+        text=dist.values, textposition="outside",
+        textfont_color="#e4eafa",
+    ))
+    apply_chart_style(fig, "How many customers are in each segment?", 340)
+    st.plotly_chart(fig, use_container_width=True)
+
+
+# Relationships page
+
+def show_relationships(df):
+    section("Correlation Matrix")
+
+    num_cols = [c for c in ["Age", "AnnualIncome", "SpendingScore", "WorkExperience", "FamilySize"]
+                if c in df.columns]
+    corr = df[num_cols].corr().round(2)
+
+    fig = go.Figure(go.Heatmap(
+        z=corr.values,
+        x=num_cols,
+        y=num_cols,
+        colorscale="RdBu",
+        zmid=0,
+        text=corr.values,
+        texttemplate="%{text}",
+        textfont=dict(size=12, color="#ffffff"),
+        colorbar=dict(thickness=14, tickfont_color="#cbd5e8"),
+    ))
+    apply_chart_style(fig, "Pearson Correlation Between Key Variables", 460)
+    st.plotly_chart(fig, use_container_width=True)
+
+    section("Key Pairwise Relationships")
+    st.markdown('<p style="color:#aeb6cc;font-size:0.88rem;margin-top:-12px;margin-bottom:16px;">'
+                'Each chart shows the trend line and Pearson r value.</p>', unsafe_allow_html=True)
+
+    pairs = [
+        ("AnnualIncome", "SpendingScore", "#f687b3", "Does earning more mean spending more?"),
+        ("Age", "SpendingScore", "#48bb78", "Do older customers spend less?"),
+        ("Age", "AnnualIncome", "#60d9fa", "Does income rise with age?"),
+    ]
+
+    scatter_cols = st.columns(3)
+    for col, (x, y, color, question) in zip(scatter_cols, pairs):
+        valid = df[[x, y]].dropna()
+        r, p = stats.pearsonr(valid[x], valid[y])
+        fig = px.scatter(
+            df, x=x, y=y,
+            trendline="ols",
+            opacity=0.4,
+            color_discrete_sequence=[color],
+            labels={x: x, y: y},
+        )
+        apply_chart_style(fig, f"{question}<br><sup>r = {r:.3f}, p = {p:.1e}</sup>", 300)
+        with col:
+            st.plotly_chart(fig, use_container_width=True)
+
+    if "FamilySize" in df.columns:
+        section("Family Size and Spending")
+        family_spend = df.groupby("FamilySize")["SpendingScore"].mean().round(1)
+        fig = go.Figure(go.Scatter(
+            x=family_spend.index.astype(str),
+            y=family_spend.values,
+            mode="lines+markers",
+            line=dict(color="#a78bfa", width=2.5),
+            marker=dict(size=9, color="#a78bfa"),
+        ))
+        apply_chart_style(fig, "Does family size affect spending behavior?", 320)
+        st.plotly_chart(fig, use_container_width=True)
+
+
+# Insights page
+
+def show_insights(df):
+    section("Marketing Takeaways")
+    st.markdown(
+        '<p style="color:#aeb6cc;font-size:0.88rem;margin-top:-12px;margin-bottom:20px;">'
+        "Plain-language findings from the data, framed for a marketing team.</p>",
+        unsafe_allow_html=True,
+    )
+
+    seg_df, _ = segment_customers(df, 5)
+    seg_summary = (
+        seg_df.groupby("SegmentName")
+        .agg(n=("CustomerID", "count"), spend=("SpendingScore", "mean"), income=("AnnualIncome", "mean"))
+    )
+
+    insights = []
+
+    # Best segment to target
+    top_seg = seg_summary.sort_values("spend", ascending=False).index[0]
+    top = seg_summary.loc[top_seg]
+    insights.append(("good",
+        f"The <b>{top_seg}</b> segment has the highest average spending score "
+        f"({top['spend']:.0f} out of 100) and represents "
+        f"{top['n'] / len(seg_df) * 100:.0f}% of the customer base. "
+        f"This is the best group to prioritize for retention and upsell campaigns."))
+
+    # Untapped earners
+    untapped = [s for s in seg_summary.index if "Untapped" in s]
+    if untapped:
+        ut = seg_summary.loc[untapped[0]]
+        insights.append(("warn",
+            f"The <b>{untapped[0]}</b> group earns well (avg ${ut['income']:,.0f}) "
+            f"but scores only {ut['spend']:.0f} on spending. "
+            f"There is real conversion opportunity here worth investigating with targeted messaging."))
+
+    # Income vs spending correlation
+    r_inc_spend, _ = stats.pearsonr(df["AnnualIncome"], df["SpendingScore"])
+    if abs(r_inc_spend) < 0.15:
+        insights.append(("neutral",
+            f"Income and spending score are barely correlated (r = {r_inc_spend:.3f}). "
+            f"This is a useful finding: income alone is a weak targeting signal for this audience. "
+            f"Behavioral and demographic variables will do more work."))
+    else:
+        direction = "positive" if r_inc_spend > 0 else "negative"
+        insights.append(("good" if r_inc_spend > 0 else "warn",
+            f"There is a {direction} relationship between income and spending score "
+            f"(r = {r_inc_spend:.3f}). "
+            f"Income can be used as a targeting variable for this audience."))
+
+    # Age and spending
+    young_spend = df[df["Age"] < 35]["SpendingScore"].mean()
+    older_spend = df[df["Age"] >= 35]["SpendingScore"].mean()
+    younger_higher = young_spend > older_spend
+    insights.append(("good" if younger_higher else "neutral",
+        f"Customers under 35 score {young_spend:.0f} on spending vs {older_spend:.0f} for those 35 and over. "
+        f"{'Younger customers are the more active spenders, worth prioritizing in acquisition campaigns.' if younger_higher else 'Older customers spend at a comparable rate, so age-based targeting needs nuance.'}"))
+
+    # Gender spending gap
+    if "Gender" in df.columns:
+        gs = df.groupby("Gender")["SpendingScore"].mean()
+        if len(gs) == 2:
+            high_g, low_g = gs.idxmax(), gs.idxmin()
+            gap = gs.max() - gs.min()
+            insights.append(("neutral",
+                f"{high_g} customers average {gs.max():.0f} on the spending score vs "
+                f"{gs.min():.0f} for {low_g} customers, a gap of {gap:.1f} points. "
+                f"{'This is a meaningful difference worth testing gender-specific creative against.' if gap > 5 else 'The gap is small, so gender alone is unlikely to be a strong segmentation lever.'}"))
+
+    # Top spending profession
+    if "Profession" in df.columns:
+        prof_size = df["Profession"].value_counts()
+        valid = prof_size[prof_size >= 15].index
+        if len(valid):
+            prof_spend = df[df["Profession"].isin(valid)].groupby("Profession")["SpendingScore"].mean()
+            top_prof = prof_spend.idxmax()
+            insights.append(("good",
+                f"Among well-represented professions, <b>{top_prof}</b> customers score highest on spending "
+                f"({prof_spend.max():.0f} out of 100). "
+                f"This group is worth testing targeted creative against."))
+
+    # Family size note
+    if "FamilySize" in df.columns:
+        r_fam, _ = stats.pearsonr(
+            df["FamilySize"].dropna(),
+            df.loc[df["FamilySize"].notna(), "SpendingScore"]
+        )
+        insights.append(("neutral",
+            f"Family size has a {'weak' if abs(r_fam) < 0.2 else 'moderate'} relationship with spending "
+            f"(r = {r_fam:.3f}). "
+            f"{'It is not a strong standalone targeting variable but could add value in a combined model.' if abs(r_fam) < 0.2 else 'It may be worth including in a combined segmentation model.'}"))
+
+    style_map = {"good": "insight-good", "warn": "insight-warn", "neutral": "insight-neutral"}
+    for tone, text in insights:
+        css_class = style_map.get(tone, "insight-neutral")
+        st.markdown(f'<div class="insight-card {css_class}">{text}</div>', unsafe_allow_html=True)
+
+    # Population summary chart
+    section("Population Summary")
+    pop_metrics = {}
+    pop_metrics["Avg Spending Score"] = df["SpendingScore"].mean()
+    pop_metrics["Avg Age"] = df["Age"].mean()
+    pop_metrics["Avg Income (k)"] = df["AnnualIncome"].mean() / 1000
+    if "FamilySize" in df.columns:
+        pop_metrics["Avg Family Size"] = df["FamilySize"].mean()
+    if "WorkExperience" in df.columns:
+        pop_metrics["Avg Work Experience"] = df["WorkExperience"].mean()
+
+    fig = go.Figure(go.Bar(
+        x=list(pop_metrics.keys()),
+        y=list(pop_metrics.values()),
+        marker_color=PALETTE[:len(pop_metrics)],
+        text=[f"{v:.1f}" for v in pop_metrics.values()],
+        textposition="outside",
+        textfont_color="#e4eafa",
+    ))
+    apply_chart_style(fig, "Key Population Averages", 340)
+    st.plotly_chart(fig, use_container_width=True)
+
+
+# Sidebar and main
+
+def build_sidebar(df):
+    st.sidebar.markdown("## Customer Intelligence")
     st.sidebar.markdown(
-        "<div style='color:#4a5568;font-size:.76rem;'>Kaggle · arashnic/fitbit<br>"
-        "30 users · 31 days · Mar–Apr 2016</div>", unsafe_allow_html=True)
+        "<div style='color:#9aa3bb;font-size:0.78rem;margin-bottom:16px;'>"
+        "Kaggle: datascientistanna/customers</div>",
+        unsafe_allow_html=True,
+    )
     st.sidebar.markdown("---")
 
-    page = st.sidebar.radio("Navigate", [
-        "📌 Overview", "📈 Trends", "🔍 Patterns",
-        "🚨 Anomalies", "🔮 Prediction", "🧾 Insights"
-    ], label_visibility="collapsed")
+    page = st.sidebar.radio(
+        "Go to",
+        ["Overview", "Demographics", "Segmentation", "Relationships", "Insights"],
+        label_visibility="collapsed",
+    )
 
     st.sidebar.markdown("---")
     st.sidebar.markdown("**Filters**")
 
-    users = ["All Users"] + sorted(df["user_label"].unique().tolist())
-    sel_user = st.sidebar.selectbox("User", users)
+    filtered = df.copy()
+
+    if "Gender" in df.columns:
+        genders = sorted(df["Gender"].dropna().unique())
+        selected = st.sidebar.multiselect("Gender", genders, default=genders)
+        if selected:
+            filtered = filtered[filtered["Gender"].isin(selected)]
+
+    if "Age" in df.columns:
+        min_age, max_age = int(df["Age"].min()), int(df["Age"].max())
+        age_range = st.sidebar.slider("Age range", min_age, max_age, (min_age, max_age))
+        filtered = filtered[(filtered["Age"] >= age_range[0]) & (filtered["Age"] <= age_range[1])]
+
+    if "AnnualIncome" in df.columns:
+        inc_min = int(df["AnnualIncome"].min())
+        inc_max = int(df["AnnualIncome"].max())
+        inc_range = st.sidebar.slider("Annual Income ($)", inc_min, inc_max, (inc_min, inc_max), step=1000)
+        filtered = filtered[
+            (filtered["AnnualIncome"] >= inc_range[0]) &
+            (filtered["AnnualIncome"] <= inc_range[1])
+        ]
+
+    return page, filtered
 
-    metrics = st.sidebar.multiselect(
-        "Metrics",
-        ["TotalSteps", "Calories", "SedentaryMinutes", "VeryActiveMinutes",
-         "TotalMinutesAsleep", "sleep_efficiency"],
-        default=["TotalSteps", "Calories", "SedentaryMinutes"],
-        format_func=lambda x: LABELS.get(x, x),
-    )
 
-    show_anom  = st.sidebar.toggle("Show Anomaly Markers", True)
-    show_roll  = st.sidebar.toggle("Show Rolling Averages", True)
-
-    # Filter data
-    dff = df.copy()
-    if sel_user != "All Users":
-        dff = dff[dff["user_label"] == sel_user]
-
-    return page, dff, sel_user, metrics, show_anom, show_roll
-
-
-# ── Page helpers ──────────────────────────────────────────────────────────────
-def kpi(val, label, delta="", dcolor="#8b92a8", vcolor="#7c9ef5"):
-    return f"""<div class="metric-card">
-      <div class="val" style="color:{vcolor}">{val}</div>
-      <div class="lbl">{label}</div>
-      <div class="dlt" style="color:{dcolor}">{delta}</div>
-    </div>"""
-
-
-def trend_chart(df, metric, show_anom, show_roll, height=340):
-    color = COLORS.get(metric, "#7c9ef5")
-    label = LABELS.get(metric, metric)
-    fig = go.Figure()
-
-    # Per-user lines (thin)
-    for uid, grp in df.groupby("Id"):
-        fig.add_trace(go.Scatter(
-            x=grp["date"], y=grp[metric],
-            mode="lines", line=dict(color=color, width=1), opacity=0.25,
-            showlegend=False,
-            hovertemplate=f"User {str(uid)[-4:]}<br>%{{x|%b %d}}: %{{y:.1f}}<extra></extra>",
-        ))
-
-    # Population daily mean
-    pop = df.groupby("date")[metric].mean().reset_index()
-    fig.add_trace(go.Scatter(
-        x=pop["date"], y=pop[metric],
-        name="Pop avg", line=dict(color=color, width=2.5),
-        hovertemplate="<b>Avg</b> %{x|%b %d}: %{y:.1f}<extra></extra>",
-    ))
-
-    if show_roll and f"{metric}_r7" in df.columns:
-        pr7 = df.groupby("date")[f"{metric}_r7"].mean().reset_index()
-        fig.add_trace(go.Scatter(
-            x=pr7["date"], y=pr7[f"{metric}_r7"],
-            name="7-day avg", line=dict(color="#ffffff", width=2, dash="dot"),
-        ))
-
-    if show_anom and "anomaly" in df.columns:
-        an = df[df["anomaly"] == -1]
-        fig.add_trace(go.Scatter(
-            x=an["date"], y=an[metric], mode="markers",
-            marker=dict(color="#ff4444", size=9, symbol="x",
-                        line=dict(color="#ff0000", width=2)),
-            name="Anomaly",
-            hovertemplate="<b>⚠ Anomaly</b><br>%{x|%b %d}: %{y:.1f}<extra></extra>",
-        ))
-
-    fig.update_layout(**{**PLOT, "height": height,
-                         "title": f"{label} — Daily Trend (all users)"})
-    return fig
-
-
-# ── Pages ─────────────────────────────────────────────────────────────────────
-def page_overview(df, sel_user):
-    st.markdown('<div class="platform-title">💪 FitBit Health Intelligence Platform</div>',
-                unsafe_allow_html=True)
-    st.markdown(
-        '<div class="platform-sub">Dataset: <b>Kaggle · arashnic/fitbit</b> · '
-        '30 users · 31 days (Mar 12 – Apr 11 2016) · '
-        'dailyActivity_merged.csv + sleepDay_merged.csv</div>',
-        unsafe_allow_html=True)
-
-    # KPIs
-    cols = st.columns(4)
-    kpis = [
-        (f"{df['TotalSteps'].mean():,.0f}", "Avg Daily Steps",
-         f"{df['TotalSteps'].median():,.0f} median", "#60d9fa"),
-        (f"{df['Calories'].mean():,.0f}", "Avg Calories/Day",
-         f"max {df['Calories'].max():,}", "#f687b3"),
-        (f"{df['sleep_hours'].mean():.1f}h", "Avg Sleep",
-         f"{df['sleep_hours'].dropna().median():.1f}h median", "#a78bfa"),
-        (f"{df['SedentaryMinutes'].mean():.0f}", "Avg Sedentary Mins",
-         f"{df['SedentaryMinutes'].mean()/60:.1f}h/day", "#fc8181"),
-    ]
-    for col, (v, l, d, c) in zip(cols, kpis):
-        with col:
-            st.markdown(kpi(v, l, d, c, c), unsafe_allow_html=True)
-
-    st.markdown("")
-    cols2 = st.columns(4)
-    kpis2 = [
-        (f"{df['Id'].nunique()}", "Unique Users", "in dataset", "#48bb78"),
-        (f"{len(df)}", "Total Records", f"{df['date'].nunique()} days", "#f6a623"),
-        (f"{df['VeryActiveMinutes'].mean():.0f}", "Avg Very Active Mins",
-         "per day", "#7c9ef5"),
-        (f"{df['sleep_efficiency'].mean():.1f}%", "Avg Sleep Efficiency",
-         "min asleep / in bed", "#60d9fa"),
-    ]
-    for col, (v, l, d, c) in zip(cols2, kpis2):
-        with col:
-            st.markdown(kpi(v, l, d, c, c), unsafe_allow_html=True)
-
-    st.markdown('<div class="section-hdr">Data Preview</div>', unsafe_allow_html=True)
-    show_cols = ["user_label", "date", "TotalSteps", "TotalDistance", "VeryActiveMinutes",
-                 "SedentaryMinutes", "Calories", "sleep_hours", "sleep_efficiency"]
-    show_cols = [c for c in show_cols if c in df.columns]
-    st.dataframe(df[show_cols].head(20), use_container_width=True, height=310)
-
-    st.markdown('<div class="section-hdr">Dataset Summary Statistics</div>', unsafe_allow_html=True)
-    stat_cols = ["TotalSteps", "Calories", "SedentaryMinutes", "VeryActiveMinutes",
-                 "TotalDistance", "sleep_hours", "sleep_efficiency"]
-    stat_cols = [c for c in stat_cols if c in df.columns]
-    st.dataframe(df[stat_cols].describe().round(2), use_container_width=True)
-
-    # Quick distribution chart
-    st.markdown('<div class="section-hdr">Steps Distribution Across All Users</div>',
-                unsafe_allow_html=True)
-    fig = go.Figure()
-    for uid, grp in df.groupby("user_label"):
-        fig.add_trace(go.Box(y=grp["TotalSteps"], name=uid,
-                             marker_color="#60d9fa", line_color="#7c9ef5",
-                             showlegend=False, boxmean=True))
-    fig.update_layout(**{**PLOT, "height": 380,
-                         "title": "Daily Steps Distribution — Per User",
-                         "xaxis_tickangle": -45})
-    st.plotly_chart(fig, use_container_width=True)
-
-
-def page_trends(df, metrics, show_anom, show_roll):
-    st.markdown('<div class="section-hdr">📈 Behavioral Trends Over Time</div>',
-                unsafe_allow_html=True)
-
-    if not metrics:
-        st.warning("Pick at least one metric in the sidebar.")
-        return
-
-    for m in metrics:
-        st.plotly_chart(trend_chart(df, m, show_anom, show_roll), use_container_width=True)
-
-    # Normalized overlay
-    st.markdown('<div class="section-hdr">Normalized Multi-Metric Overlay</div>',
-                unsafe_allow_html=True)
-    pop = df.groupby("date")[metrics].mean()
-    fig = go.Figure()
-    for m in metrics:
-        s = pop[m]
-        norm = (s - s.min()) / (s.max() - s.min() + 1e-9)
-        fig.add_trace(go.Scatter(x=pop.index, y=norm,
-                                 name=LABELS.get(m, m),
-                                 line=dict(color=COLORS.get(m, "#7c9ef5"), width=2)))
-    fig.update_layout(**{**PLOT, "height": 320, "title": "Population Avg — Normalized (0–1)"})
-    st.plotly_chart(fig, use_container_width=True)
-
-
-def page_patterns(df):
-    st.markdown('<div class="section-hdr">🔍 Behavioral Pattern Analysis</div>',
-                unsafe_allow_html=True)
-
-    tab1, tab2, tab3, tab4 = st.tabs(
-        ["📅 Day-of-Week", "👤 Per-User Profile", "🔗 Correlations", "🏃 Activity Mix"])
-
-    # ── Day-of-week
-    with tab1:
-        dow_order = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"]
-        dow = df.groupby("day_of_week")[
-            ["TotalSteps","Calories","SedentaryMinutes","VeryActiveMinutes","sleep_hours"]
-        ].mean().round(1).reindex(dow_order)
-
-        fig = make_subplots(2, 2, subplot_titles=(
-            "Steps by Day", "Calories by Day",
-            "Sedentary Mins by Day", "Very Active Mins by Day"))
-        pairs = [("TotalSteps","#60d9fa",1,1),("Calories","#f687b3",1,2),
-                 ("SedentaryMinutes","#fc8181",2,1),("VeryActiveMinutes","#48bb78",2,2)]
-        for col, color, r, c in pairs:
-            fig.add_trace(go.Bar(x=dow.index, y=dow[col], marker_color=color,
-                                 showlegend=False), row=r, col=c)
-        fig.update_layout(**{**PLOT, "height": 520, "barmode": "group"})
-        fig.update_annotations(font_color="#c0c8e0")
-        st.plotly_chart(fig, use_container_width=True)
-
-    # ── Per-user profile
-    with tab2:
-        user_profile = df.groupby("user_label").agg(
-            avg_steps=("TotalSteps","mean"),
-            avg_calories=("Calories","mean"),
-            avg_sedentary=("SedentaryMinutes","mean"),
-            avg_very_active=("VeryActiveMinutes","mean"),
-            avg_sleep=("sleep_hours","mean"),
-            days=("date","nunique"),
-        ).round(1).reset_index()
-
-        st.dataframe(user_profile, use_container_width=True, height=380)
-
-        # Scatter: steps vs calories
-        fig2 = px.scatter(user_profile, x="avg_steps", y="avg_calories",
-                          text="user_label", size="avg_very_active",
-                          color="avg_sleep", color_continuous_scale="Viridis",
-                          labels={"avg_steps":"Avg Steps","avg_calories":"Avg Calories",
-                                  "avg_sleep":"Avg Sleep (hrs)"},
-                          title="User Profile: Steps vs Calories (size=active mins, color=sleep)")
-        fig2.update_traces(textposition="top center", textfont_size=9)
-        fig2.update_layout(**{**PLOT, "height": 400})
-        st.plotly_chart(fig2, use_container_width=True)
-
-    # ── Correlations
-    with tab3:
-        corr_cols = ["TotalSteps","Calories","SedentaryMinutes","VeryActiveMinutes",
-                     "TotalDistance","sleep_hours","sleep_efficiency","active_minutes"]
-        corr_cols = [c for c in corr_cols if c in df.columns]
-        corr = df[corr_cols].corr().round(3)
-        lbls = [LABELS.get(c, c).replace(" ","<br>") for c in corr_cols]
-
-        fig = go.Figure(go.Heatmap(
-            z=corr.values, x=lbls, y=lbls,
-            colorscale="RdBu", zmid=0,
-            text=corr.values.round(2), texttemplate="%{text}",
-            textfont=dict(size=9, color="white"),
-            colorbar=dict(thickness=13, tickfont_color="#a0aec0"),
-        ))
-        fig.update_layout(**{**PLOT, "height": 490, "title": "Pearson Correlation Matrix"})
-        st.plotly_chart(fig, use_container_width=True)
-
-        # Key scatter relationships
-        st.markdown("#### Key Pairwise Relationships")
-        s_pairs = [("TotalSteps","Calories","#f687b3"),
-                   ("TotalSteps","SedentaryMinutes","#fc8181"),
-                   ("sleep_hours","VeryActiveMinutes","#48bb78")]
-        s_cols = st.columns(3)
-        for col, (x, y, color) in zip(s_cols, s_pairs):
-            valid = df[[x, y]].dropna()
-            r, p = stats.pearsonr(valid[x], valid[y])
-            fig_s = px.scatter(df, x=x, y=y, trendline="ols", opacity=0.45,
-                               color_discrete_sequence=[color],
-                               labels={x: LABELS.get(x,x), y: LABELS.get(y,y)})
-            fig_s.update_layout(**{**PLOT, "height": 300,
-                "title": f"{LABELS.get(x,x)[:12]} vs {LABELS.get(y,y)[:12]}<br>"
-                         f"<sup>r={r:.3f}, p={p:.2e}</sup>"})
-            with col:
-                st.plotly_chart(fig_s, use_container_width=True)
-
-    # ── Activity mix
-    with tab4:
-        st.markdown("#### Population-Level Activity Time Breakdown")
-        mix = df[["VeryActiveMinutes","FairlyActiveMinutes","LightlyActiveMinutes",
-                  "SedentaryMinutes"]].mean().round(1)
-        labels = ["Very Active","Fairly Active","Lightly Active","Sedentary"]
-        colors = ["#48bb78","#f6a623","#60d9fa","#fc8181"]
-        fig = go.Figure(go.Pie(labels=labels, values=mix.values,
-                               marker_colors=colors, hole=0.45,
-                               textinfo="label+percent"))
-        fig.update_layout(**{**PLOT, "height": 400,
-                              "title": "Avg Daily Minutes by Activity Level"})
-        st.plotly_chart(fig, use_container_width=True)
-
-        # Stacked bar per day-of-week
-        dow = df.groupby("day_of_week")[
-            ["VeryActiveMinutes","FairlyActiveMinutes","LightlyActiveMinutes","SedentaryMinutes"]
-        ].mean().round(1).reindex(
-            ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"])
-
-        fig2 = go.Figure()
-        for col, color, label in zip(
-            ["VeryActiveMinutes","FairlyActiveMinutes","LightlyActiveMinutes","SedentaryMinutes"],
-            ["#48bb78","#f6a623","#60d9fa","#fc8181"],
-            ["Very Active","Fairly Active","Lightly Active","Sedentary"]
-        ):
-            fig2.add_trace(go.Bar(x=dow.index, y=dow[col], name=label,
-                                  marker_color=color))
-        fig2.update_layout(**{**PLOT, "height": 360, "barmode": "stack",
-                               "title": "Activity Mix by Day of Week"})
-        st.plotly_chart(fig2, use_container_width=True)
-
-
-def page_anomalies(df):
-    st.markdown('<div class="section-hdr">🚨 Anomaly Detection</div>', unsafe_allow_html=True)
-
-    anom = df[df["anomaly"] == -1]
-    n = len(anom)
-    pct = n / len(df) * 100
-
-    c1, c2, c3 = st.columns(3)
-    with c1:
-        st.markdown(kpi(n, "Anomalous Records", f"{pct:.1f}% of dataset", "#fc8181", "#fc8181"),
-                    unsafe_allow_html=True)
-    with c2:
-        st.markdown(kpi("Isolation Forest", "Detection Method",
-                        "per-user, 7% contamination", "#f6a623", "#f6a623"),
-                    unsafe_allow_html=True)
-    with c3:
-        hi = len(anom[anom["anomaly_score"] > anom["anomaly_score"].quantile(0.75)])
-        st.markdown(kpi(hi, "High-Severity", "top 25% anomaly score", "#fc8181", "#fc8181"),
-                    unsafe_allow_html=True)
-
-    st.markdown("")
-
-    # Anomaly score timeline
-    pop_score = df.groupby("date")["anomaly_score"].mean().reset_index()
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(x=pop_score["date"], y=pop_score["anomaly_score"],
-                             fill="tozeroy", fillcolor="rgba(252,129,129,.08)",
-                             line=dict(color="#fc8181", width=1.5),
-                             name="Avg Anomaly Score"))
-    fig.update_layout(**{**PLOT, "height": 280, "title": "Population Anomaly Score Over Time"})
-    st.plotly_chart(fig, use_container_width=True)
-
-    # Per-metric scatter with anomalies highlighted
-    st.markdown("#### Anomalous Days by Metric")
-    anom_metrics = ["TotalSteps", "Calories", "SedentaryMinutes", "VeryActiveMinutes"]
-    fig2 = make_subplots(2, 2, subplot_titles=[LABELS[m] for m in anom_metrics])
-    pos = [(1,1),(1,2),(2,1),(2,2)]
-    for m, (r, c) in zip(anom_metrics, pos):
-        color = COLORS.get(m, "#7c9ef5")
-        normal = df[df["anomaly"] != -1]
-        fig2.add_trace(go.Scatter(x=normal["date"], y=normal[m], mode="lines",
-                                  line=dict(color=color, width=1), opacity=0.4,
-                                  showlegend=False), row=r, col=c)
-        fig2.add_trace(go.Scatter(x=anom["date"], y=anom[m], mode="markers",
-                                  marker=dict(color="#ff4444", size=8, symbol="x"),
-                                  showlegend=(r==1 and c==1), name="Anomaly"), row=r, col=c)
-    fig2.update_layout(**{**PLOT, "height": 520})
-    fig2.update_annotations(font_color="#c0c8e0")
-    st.plotly_chart(fig2, use_container_width=True)
-
-    # Anomaly table
-    st.markdown("#### Top Anomalous Records")
-    show = anom[["user_label","date","TotalSteps","Calories","SedentaryMinutes",
-                 "VeryActiveMinutes","anomaly_score"]].copy()
-    show["anomaly_score"] = show["anomaly_score"].round(4)
-    show = show.sort_values("anomaly_score", ascending=False).head(30)
-    show["date"] = pd.to_datetime(show["date"]).dt.strftime("%b %d, %Y")
-    st.dataframe(show, use_container_width=True, height=360)
-
-
-def page_prediction(df):
-    st.markdown('<div class="section-hdr">🔮 Behavioral Forecasting</div>', unsafe_allow_html=True)
-
-    target_opts = {"Calories": "Calories Burned", "TotalSteps": "Total Steps",
-                   "SedentaryMinutes": "Sedentary Minutes",
-                   "VeryActiveMinutes": "Very Active Minutes"}
-    target = st.selectbox("Predict:", list(target_opts.keys()),
-                          format_func=lambda x: target_opts[x])
-
-    with st.spinner("Training Random Forest…"):
-        res = train_model(df, target)
-
-    c1, c2, c3 = st.columns(3)
-    units = {"Calories":"kcal","TotalSteps":"steps",
-             "SedentaryMinutes":"mins","VeryActiveMinutes":"mins"}
-    with c1:
-        st.markdown(f"""<div class="pred-box">
-          <div class="plbl">Next-Record Prediction</div>
-          <div class="pval">{res['next_pred']:,.0f}</div>
-          <div class="plbl" style="color:#60d9fa;margin-top:4px">{units.get(target,'')}</div>
-        </div>""", unsafe_allow_html=True)
-    with c2:
-        st.markdown(kpi(f"{res['mae']:,.1f}", "Mean Absolute Error",
-                        f"on {target_opts[target]}", "#48bb78", "#48bb78"),
-                    unsafe_allow_html=True)
-    with c3:
-        rc = "#48bb78" if res["r2"] > 0.5 else "#f6a623"
-        st.markdown(kpi(f"{res['r2']:.3f}", "R² Score", "explained variance", rc, rc),
-                    unsafe_allow_html=True)
-
-    st.markdown("")
-    ca, cb = st.columns([3, 2])
-    with ca:
-        fig = go.Figure()
-        fig.add_trace(go.Scatter(x=res["dates"], y=res["y_test"],
-                                 name="Actual",
-                                 line=dict(color=COLORS.get(target,"#7c9ef5"), width=2)))
-        fig.add_trace(go.Scatter(x=res["dates"], y=res["y_pred"],
-                                 name="Predicted",
-                                 line=dict(color="#ffd700", width=2, dash="dot")))
-        fig.update_layout(**{**PLOT, "height": 350,
-                              "title": f"{target_opts[target]} — Actual vs Predicted"})
-        st.plotly_chart(fig, use_container_width=True)
-    with cb:
-        imp = res["importances"].head(7)
-        fig2 = go.Figure(go.Bar(x=imp.values, y=[LABELS.get(i,i) for i in imp.index],
-                                orientation="h", marker_color="#7c9ef5"))
-        fig2.update_layout(**{**PLOT, "height": 350, "title": "Feature Importances"})
-        st.plotly_chart(fig2, use_container_width=True)
-
-    resid = res["y_test"] - res["y_pred"]
-    fig3 = go.Figure(go.Histogram(x=resid, nbinsx=28,
-                                   marker_color="#a78bfa", opacity=0.8))
-    fig3.update_layout(**{**PLOT, "height": 260, "title": "Residuals Distribution"})
-    st.plotly_chart(fig3, use_container_width=True)
-
-
-def page_insights(df):
-    st.markdown('<div class="section-hdr">🧾 Automated Behavioral Insights</div>',
-                unsafe_allow_html=True)
-    st.markdown('<p style="color:#4a5568;margin-top:-12px;margin-bottom:20px;">'
-                'Data-driven interpretations from the FitBit population dataset</p>',
-                unsafe_allow_html=True)
-
-    insights = []
-
-    # Steps
-    avg_steps = df["TotalSteps"].mean()
-    who_rec   = 10000
-    pct_who   = (df["TotalSteps"] >= who_rec).mean() * 100
-    delta_who = ((avg_steps - who_rec) / who_rec) * 100
-    cls = "good" if avg_steps >= who_rec else "bad"
-    insights.append((cls,
-        f"🚶 The population averages <b>{avg_steps:,.0f} steps/day</b> — "
-        f"{'above' if avg_steps >= who_rec else 'below'} the WHO-recommended 10,000 "
-        f"by {abs(delta_who):.1f}%. Only <b>{pct_who:.1f}%</b> of recorded days hit 10K+ steps."))
-
-    # Sedentary
-    avg_sed_h = df["SedentaryMinutes"].mean() / 60
-    insights.append(("bad" if avg_sed_h > 10 else "warn",
-        f"🪑 Users average <b>{avg_sed_h:.1f} sedentary hours/day</b> "
-        f"({df['SedentaryMinutes'].mean():.0f} mins). "
-        f"{'This exceeds health guidelines — prolonged sitting is linked to metabolic risk.' if avg_sed_h > 10 else 'Sedentary time is within moderate range.'}"))
-
-    # Sleep
-    avg_sleep = df["sleep_hours"].mean()
-    sleep_rec = 7.0
-    if not np.isnan(avg_sleep):
-        cls2 = "good" if avg_sleep >= sleep_rec else "warn"
-        insights.append((cls2,
-            f"🛌 Average sleep is <b>{avg_sleep:.2f} hours/night</b> "
-            f"({'meets' if avg_sleep >= sleep_rec else 'below'} the 7h minimum recommendation). "
-            f"Sleep efficiency averages <b>{df['sleep_efficiency'].mean():.1f}%</b> "
-            f"(time asleep ÷ time in bed)."))
-
-    # Correlation: steps ↔ calories
-    r_sc, p_sc = stats.pearsonr(df["TotalSteps"].dropna(), df["Calories"].dropna())
-    insights.append(("good",
-        f"🔗 <b>Steps ↔ Calories</b>: r = {r_sc:.3f} (p={p_sc:.2e}). "
-        f"Strong positive relationship — every additional 1,000 steps is associated with "
-        f"~{(r_sc * df['Calories'].std() / (df['TotalSteps'].std() / 1000)):.0f} extra calories burned."))
-
-    # Sedentary vs steps correlation
-    r_sed, _ = stats.pearsonr(
-        df[["TotalSteps","SedentaryMinutes"]].dropna()["TotalSteps"],
-        df[["TotalSteps","SedentaryMinutes"]].dropna()["SedentaryMinutes"])
-    insights.append(("warn" if r_sed < -0.2 else "neutral",
-        f"📊 <b>Steps ↔ Sedentary Time</b>: r = {r_sed:.3f}. "
-        f"{'Negative correlation confirms that more active users spend less time sedentary.' if r_sed < -0.2 else 'Weak relationship between step count and sedentary time in this cohort.'}"))
-
-    # Best vs worst user
-    up = df.groupby("user_label")["TotalSteps"].mean().sort_values()
-    insights.append(("good",
-        f"🏆 Most active user: <b>{up.index[-1]}</b> — avg {up.iloc[-1]:,.0f} steps/day. "
-        f"Least active: <b>{up.index[0]}</b> — avg {up.iloc[0]:,.0f} steps/day. "
-        f"A <b>{(up.iloc[-1]/up.iloc[0]):.1f}×</b> difference across the cohort."))
-
-    # Day-of-week best
-    dow = df.groupby("day_of_week")["TotalSteps"].mean()
-    best_day = dow.idxmax(); worst_day = dow.idxmin()
-    insights.append(("neutral",
-        f"📅 Most active day: <b>{best_day}</b> ({dow[best_day]:,.0f} avg steps). "
-        f"Least active: <b>{worst_day}</b> ({dow[worst_day]:,.0f} avg steps). "
-        f"Weekend patterns show {'increased' if dow.get('Saturday',0) > dow.get('Wednesday',0) else 'reduced'} activity."))
-
-    # Anomaly insight
-    n_anom = (df["anomaly"] == -1).sum()
-    insights.append(("warn",
-        f"🚨 <b>{n_anom} anomalous records</b> detected across {len(df)} entries "
-        f"({n_anom/len(df)*100:.1f}%) using Isolation Forest per-user. "
-        f"These flag unusual combinations of low activity, high sedentary time, "
-        f"or abnormal calorie burn for that individual."))
-
-    # Very active minutes
-    avg_vam = df["VeryActiveMinutes"].mean()
-    insights.append(("good" if avg_vam >= 21 else "warn",
-        f"💪 Average <b>{avg_vam:.1f} very active minutes/day</b>. "
-        f"WHO recommends 150 mins of moderate or 75 mins of vigorous activity per week — "
-        f"{'this cohort exceeds' if avg_vam*7 >= 75 else 'this cohort does not meet'} the vigorous threshold "
-        f"({avg_vam*7:.0f} weekly mins vs 75 recommended)."))
-
-    css = {"good":"good","bad":"bad","warn":"warn","neutral":""}
-    for cls, txt in insights:
-        st.markdown(f'<div class="insight-card {css.get(cls,"")}">{txt}</div>',
-                    unsafe_allow_html=True)
-
-    # Weekly rollup sparklines
-    st.markdown("---")
-    st.markdown("#### Population Trend — Daily Averages")
-    pop_daily = df.groupby("date")[
-        ["TotalSteps","Calories","SedentaryMinutes","VeryActiveMinutes"]
-    ].mean().reset_index()
-
-    fig = make_subplots(1, 4, subplot_titles=["Steps","Calories","Sedentary Mins","Very Active Mins"])
-    for i, (col, color) in enumerate([
-        ("TotalSteps","#60d9fa"),("Calories","#f687b3"),
-        ("SedentaryMinutes","#fc8181"),("VeryActiveMinutes","#48bb78")
-    ], 1):
-        fig.add_trace(go.Scatter(x=pop_daily["date"], y=pop_daily[col],
-                                 fill="tozeroy", line=dict(color=color, width=2),
-                                 showlegend=False), row=1, col=i)
-    fig.update_layout(**{**PLOT, "height": 240})
-    fig.update_annotations(font_color="#9aa8c8", font_size=10)
-    st.plotly_chart(fig, use_container_width=True)
-
-
-# ── Main ──────────────────────────────────────────────────────────────────────
 def main():
-    df_raw  = load_data()
-    df_roll = add_rolling(df_raw)
-    df_full = detect_anomalies(df_roll)
+    df = load_data()
 
-    page, dff, sel_user, metrics, show_anom, show_roll = sidebar(df_full)
+    if df is None:
+        st.error(
+            "Could not find Customers.csv. Download it from "
+            "https://www.kaggle.com/datasets/datascientistanna/customers-dataset "
+            "and place it in the same folder as this script (or in a ./data subfolder)."
+        )
+        st.stop()
 
-    if len(dff) == 0:
-        st.error("No data for selected filters.")
-        return
+    page, filtered_df = build_sidebar(df)
 
-    if   page == "📌 Overview":   page_overview(dff, sel_user)
-    elif page == "📈 Trends":     page_trends(dff, metrics, show_anom, show_roll)
-    elif page == "🔍 Patterns":   page_patterns(dff)
-    elif page == "🚨 Anomalies":  page_anomalies(dff)
-    elif page == "🔮 Prediction": page_prediction(dff)
-    elif page == "🧾 Insights":   page_insights(dff)
+    if len(filtered_df) == 0:
+        st.warning("No customers match the current filters. Try adjusting the sidebar.")
+        st.stop()
+
+    if page == "Overview":
+        show_overview(filtered_df)
+    elif page == "Demographics":
+        show_demographics(filtered_df)
+    elif page == "Segmentation":
+        show_segmentation(filtered_df)
+    elif page == "Relationships":
+        show_relationships(filtered_df)
+    elif page == "Insights":
+        show_insights(filtered_df)
 
 
 if __name__ == "__main__":
