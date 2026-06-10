@@ -167,21 +167,8 @@ CHART_DEFAULTS = dict(
 
 @st.cache_data
 def load_data():
-    """
-    Look for Customers.csv in common locations and return a cleaned dataframe.
-    Column names vary across Kaggle versions so we normalize them here.
-    """
-    search_paths = [
-        "Customers.csv",
-        "customers.csv",
-        os.path.join("data", "Customers.csv"),
-        os.path.join("data", "customers.csv"),
-    ]
-    csv_path = next((p for p in search_paths if os.path.exists(p)), None)
-    if csv_path is None:
-        return None
-
-    df = pd.read_csv(csv_path)
+    
+    df = pd.read_csv(Customers.csv)
 
     # Normalize column names to a consistent set
     column_map = {}
