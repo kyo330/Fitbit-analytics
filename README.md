@@ -12,7 +12,7 @@ pip install -r requirements.txt
 streamlit run app.py
 ```
 
-Opens at **http://localhost:8501**
+Opens at **https://fitbit-analytics-01.streamlit.app**
 
 ---
 
